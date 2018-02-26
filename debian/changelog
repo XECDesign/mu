@@ -1,3 +1,10 @@
+mu (1.0.0~beta15-1) stretch; urgency=medium
+
+  * Update to 1.0.0.beta.15
+  * Switch to foreign format
+
+ -- Serge Schneider <serge@raspberrypi.org>  Mon, 12 Feb 2018 11:39:55 +0000
+
 mu (1.0.0~beta8) stretch; urgency=medium
 
   * Repackage

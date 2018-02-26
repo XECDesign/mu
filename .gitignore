@@ -23,6 +23,8 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
+.pybuild/
+.pc/
 
 # Bluemix vendored packages
 vendor/
