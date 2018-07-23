@@ -1,3 +1,10 @@
+mu-editor (1.0.0-1~rpt1) stretch; urgency=medium
+
+  * Upstream release 1.0.0
+  * Rename to mu-editor
+
+ -- Serge Schneider <serge@raspberrypi.org>  Mon, 23 Jul 2018 10:39:33 +0100
+
 mu (1.0.0~beta15-1) stretch; urgency=medium
 
   * Update to 1.0.0.beta.15

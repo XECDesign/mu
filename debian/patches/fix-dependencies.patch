@@ -1,17 +1,22 @@
 --- a/setup.py
 +++ b/setup.py
-@@ -19,10 +19,10 @@
-     license='GPL3',
-     packages=['mu', 'mu.contrib', 'mu.resources', 'mu.modes', 'mu.debugger',
-               'mu.interface', 'mu.modes.api', ],
--    install_requires=['pycodestyle==2.3.1', 'pyflakes==1.6.0',
--                      'pyserial==3.4', 'pyqt5==5.10', 'qscintilla==2.10.2',
--                      'qtconsole==4.3.1', 'matplotlib==2.1.2',
--                      'pgzero==1.1', 'PyQtChart==5.10'],
-+    install_requires=['pycodestyle', 'pyflakes',
-+                      'pyserial', 'pyqt5', 'qscintilla',
-+                      'qtconsole', 'matplotlib',
-+                      'pgzero'],
-     include_package_data=True,
-     zip_safe=False,
-     classifiers=[
+@@ -11,13 +11,12 @@
+ with open('CHANGES.rst') as f:
+     changes = f.read()
+ 
+-install_requires = ['pycodestyle==2.4.0', 'pyflakes==2.0.0',
+-                    'pyserial==3.4', 'pyqt5==5.11.2', 'qscintilla==2.10.7',
+-                    'qtconsole==4.3.1', 'matplotlib==2.2.2',
+-                    'pgzero==1.2', 'PyQtChart==5.11.2', 'appdirs>=1.4.3',
+-                    'gpiozero>=1.4.1', 'guizero>=0.5.2',
+-                    'pigpio>=1.40.post1', 'Pillow>=5.2.0',
+-                    'requests>=2.19.1', 'semver>=2.8.0', ]
++install_requires = ['pycodestyle', 'pyflakes',
++                    'pyserial', 'pyqt5', 'qscintilla',
++                    'qtconsole', 'matplotlib',
++                    'appdirs', 'gpiozero',
++                    'Pillow', 'requests',
++                    'semver', ]
+ 
+ # Exclude packages not available for ARM in PyPI/piwheels (Raspberry Pi)
+ try:

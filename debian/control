@@ -1,4 +1,4 @@
-Source: mu
+Source: mu-editor
 Section: python
 Priority: optional
 Maintainer: Serge Schneider <serge@raspberrypi.org>
@@ -7,10 +7,20 @@ Standards-Version: 3.9.8
 Homepage: https://codewith.mu/
 X-Python3-Version: >= 3.2
 
-Package: mu
+Package: mu-editor
 Architecture: all
 Depends: ${python3:Depends}, ${misc:Depends}, python3-pyqt5.qtserialport
-Recommends: python3-pgzero
-Description: A simple editor for beginner programmers
- A very simple code editor for kids, teachers and beginner programmers.
+Suggests: python3-pgzero, python3-gpiozero
+Replaces: mu (<< 1.0.0-1~)
+Breaks: mu (<< 1.0.0-1~)
+Description: Simple editor for beginner programmers
+ Very simple code editor for kids, teachers and beginner programmers.
  It's written in Python and works on Windows, OSX, Linux and Raspberry Pi.
+
+Package: mu
+Depends: mu-editor, ${misc:Depends}
+Architecture: all
+Priority: extra
+Section: oldlibs
+Description: transitional package
+ This is a transitional package. It can safely be removed.

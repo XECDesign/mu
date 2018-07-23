@@ -1,7 +1,13 @@
 #!/usr/bin/make -f
 
-export PYBUILD_NAME=mu
+export PYBUILD_NAME=mu-editor
+export PYBUILD_DESTDIR=debian/$(PYBUILD_NAME)
+
 %:
 	dh $@ --with python3 --buildsystem=pybuild
 
 override_dh_auto_test:
+
+override_dh_auto_install:
+	dh_auto_install
+	rm -f $(PYBUILD_DESTDIR)/usr/lib/python*/dist-packages/mu/resources/fonts/LICENSE.txt
