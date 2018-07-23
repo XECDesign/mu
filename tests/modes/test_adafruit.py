@@ -24,10 +24,11 @@ def test_adafruit_mode():
 
     actions = am.actions()
     assert len(actions) == 2
-    assert actions[0]['name'] == 'repl'
+    assert actions[0]['name'] == 'serial'
     assert actions[0]['handler'] == am.toggle_repl
     assert actions[1]['name'] == 'plotter'
     assert actions[1]['handler'] == am.toggle_plotter
+    assert 'code' not in am.module_names
 
 
 def test_adafruit_mode_no_charts():
@@ -40,7 +41,7 @@ def test_adafruit_mode_no_charts():
     with mock.patch('mu.modes.adafruit.CHARTS', False):
         actions = am.actions()
         assert len(actions) == 1
-        assert actions[0]['name'] == 'repl'
+        assert actions[0]['name'] == 'serial'
         assert actions[0]['handler'] == am.toggle_repl
 
 
@@ -58,6 +59,26 @@ def test_workspace_dir_posix_exists():
             with mock.patch('mu.modes.adafruit.check_output',
                             return_value=fixture):
                 assert am.workspace_dir() == '/media/ntoll/CIRCUITPY'
+
+
+def test_workspace_dir_posix_no_mount_command():
+    """
+    When the user doesn't have administrative privileges on OSX then the mount
+    command isn't on their path. In which case, check Mu uses the more
+    explicit /sbin/mount instead.
+    """
+    editor = mock.MagicMock()
+    view = mock.MagicMock()
+    am = AdafruitMode(editor, view)
+    with open('tests/modes/mount_exists.txt', 'rb') as fixture_file:
+        fixture = fixture_file.read()
+    mock_check = mock.MagicMock(side_effect=[FileNotFoundError, fixture])
+    with mock.patch('os.name', 'posix'), \
+            mock.patch('mu.modes.adafruit.check_output', mock_check):
+        assert am.workspace_dir() == '/media/ntoll/CIRCUITPY'
+        assert mock_check.call_count == 2
+        assert mock_check.call_args_list[0][0][0] == 'mount'
+        assert mock_check.call_args_list[1][0][0] == '/sbin/mount'
 
 
 def test_workspace_dir_posix_missing():

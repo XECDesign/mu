@@ -6,6 +6,8 @@ from unittest import mock
 import mu.interface.editor
 import keyword
 import re
+from PyQt5.QtCore import Qt, QMimeData, QUrl, QPointF
+from PyQt5.QtGui import QDropEvent
 
 
 def test_pythonlexer_keywords():
@@ -37,10 +39,12 @@ def test_EditorPane_init():
                        mock_configure):
         path = '/foo/bar.py'
         text = 'print("Hello, World!")'
-        mu.interface.editor.EditorPane(path, text)
+        editor = mu.interface.editor.EditorPane(path, text, '\r\n')
         mock_text.assert_called_once_with(text)
         mock_modified.assert_called_once_with(False)
         mock_configure.assert_called_once_with()
+        assert editor.isUtf8()
+        assert editor.newline == '\r\n'
 
 
 def test_EditorPane_configure():
@@ -238,9 +242,61 @@ def test_EditorPane_annotate_code():
               'code': 'W292'}]}
     ep = mu.interface.editor.EditorPane(None, 'baz')
     ep.markerAdd = mock.MagicMock()
+    ep.ensureLineVisible = mock.MagicMock()
     ep.fillIndicatorRange = mock.MagicMock()
     ep.annotate_code(feedback, 'error')
     assert ep.fillIndicatorRange.call_count == 3  # once for each message.
+    ep.ensureLineVisible.assert_called_once_with(17)  # first problem visible
+
+
+def test_EditorPane_debugger_at_line():
+    """
+    Ensure the right calls are made to highlight the referenced line with the
+    DEBUG_INDICATOR.
+    """
+    ep = mu.interface.editor.EditorPane(None, 'baz')
+    ep.text = mock.MagicMock(return_value='baz')
+    ep.reset_debugger_highlight = mock.MagicMock()
+    ep.fillIndicatorRange = mock.MagicMock()
+    ep.ensureLineVisible = mock.MagicMock()
+    ep.debugger_at_line(99)
+    ep.reset_debugger_highlight.assert_called_once_with()
+    ep.text.assert_called_once_with(99)
+    ep.fillIndicatorRange.assert_called_once_with(99, 0, 99, 3,
+                                                  ep.DEBUG_INDICATOR)
+    ep.ensureLineVisible.assert_called_once_with(99)
+
+
+def test_EditorPane_debugger_at_line_windows_line_endings():
+    """
+    Ensure the right calls are made to highlight the referenced line with the
+    DEBUG_INDICATOR.
+    """
+    ep = mu.interface.editor.EditorPane(None, 'baz')
+    ep.text = mock.MagicMock(return_value='baz\r\n')
+    ep.reset_debugger_highlight = mock.MagicMock()
+    ep.fillIndicatorRange = mock.MagicMock()
+    ep.ensureLineVisible = mock.MagicMock()
+    ep.debugger_at_line(99)
+    ep.reset_debugger_highlight.assert_called_once_with()
+    ep.text.assert_called_once_with(99)
+    ep.fillIndicatorRange.assert_called_once_with(99, 0, 99, 3,
+                                                  ep.DEBUG_INDICATOR)
+    ep.ensureLineVisible.assert_called_once_with(99)
+
+
+def test_EditorPane_reset_debugger_highlight():
+    """
+    Ensure all DEBUG_INDICATORs are removed from the editor.
+    """
+    ep = mu.interface.editor.EditorPane(None, 'baz')
+    ep.lines = mock.MagicMock(return_value=3)
+    ep.text = mock.MagicMock(return_value='baz')
+    ep.clearIndicatorRange = mock.MagicMock()
+    ep.reset_debugger_highlight()
+    assert ep.clearIndicatorRange.call_count == 3
+    assert ep.clearIndicatorRange.call_args_list[0][0] == (0, 0, 0, 3,
+                                                           ep.DEBUG_INDICATOR)
 
 
 def test_EditorPane_show_annotations():
@@ -262,7 +318,7 @@ def test_EditorPane_show_annotations():
     ep.annotate = mock.MagicMock()
     ep.show_annotations()
     ep.annotate.assert_called_once_with(1,
-                                        '\u2BB4Message 1\n\u2BB4Message 2',
+                                        '\u2191 message 1\n\u2191 message 2',
                                         ep.annotationDisplay())
 
 
@@ -448,3 +504,161 @@ def test_EditorPane_selection_change_listener():
     assert ep.previous_selection['line_end'] == 2
     assert ep.previous_selection['col_end'] == 2
     assert ep.highlight_selected_matches.call_count == 1
+
+
+def test_EditorPane_drop_event():
+    """
+    If there's a drop event associated with files, cause them to be passed into
+    Mu's existing file loading code.
+    """
+    ep = mu.interface.editor.EditorPane(None, 'baz')
+    m = mock.MagicMock()
+    ep.open_file = mock.MagicMock()
+    ep.open_file.emit = m
+    data = QMimeData()
+    data.setUrls([QUrl('file://test/path.py'), QUrl('file://test/path.hex'),
+                  QUrl('file://test/path.txt')])
+    evt = QDropEvent(QPointF(0, 0), Qt.CopyAction, data,
+                     Qt.LeftButton, Qt.NoModifier)
+    ep.dropEvent(evt)
+    # Upstream _load will handle invalid file type (.txt).
+    assert m.call_count == 3
+
+
+def test_EditorPane_drop_event_not_file():
+    """
+    If the drop event isn't for files (for example, it may be for dragging and
+    dropping text into the editor), then pass the handling up to QScintilla.
+    """
+    ep = mu.interface.editor.EditorPane(None, 'baz')
+    event = mock.MagicMock()
+    event.mimeData().hasUrls.return_value = False
+    event.isAccepted.return_value = False
+    with mock.patch('mu.interface.editor.QsciScintilla.dropEvent') as mock_de:
+        ep.dropEvent(event)
+        mock_de.assert_called_once_with(event)
+
+
+def test_EditorPane_toggle_line_starts_with_hash():
+    """
+    If the line starts with a hash ("#") immediately followed by code, then
+    uncomment it.
+
+    e.g.
+
+    #foo
+
+    becomes:
+
+    foo
+    """
+    ep = mu.interface.editor.EditorPane(None, 'baz')
+    assert ep.toggle_line('    #foo') == '    foo'
+
+
+def test_EditorPane_toggle_line_starts_with_hash_space():
+    """
+    If the line starts with a PEP-8 compliant hash followed by a space ("# ")
+    then uncomment it.
+
+    e.g.
+
+    # foo
+
+    becomes:
+
+    foo
+
+    (Note the space is dropped.)
+    """
+    ep = mu.interface.editor.EditorPane(None, 'baz')
+    assert ep.toggle_line('    # foo') == '    foo'
+
+
+def test_EditorPane_toggle_line_normal_line():
+    """
+    If the line is an uncommented line of text, then comment it with hash-space
+    ("# ").
+
+    e.g.
+
+    foo
+
+    becomes
+
+    # foo
+    """
+    ep = mu.interface.editor.EditorPane(None, 'baz')
+    assert ep.toggle_line('    foo') == '#     foo'
+
+
+def test_EditorPane_toggle_line_whitespace_line():
+    """
+    If the line is simply empty or contains only whitespace, then ignore it and
+    return as-is.
+    """
+    ep = mu.interface.editor.EditorPane(None, 'baz')
+    assert ep.toggle_line('    ') == '    '
+
+
+def test_EditorPane_toggle_comments_no_selection():
+    """
+    If no text is selected, toggle the line currently containing the cursor.
+    """
+    ep = mu.interface.editor.EditorPane(None, 'baz')
+    ep.hasSelectedText = mock.MagicMock(return_value=False)
+    ep.getCursorPosition = mock.MagicMock(return_value=(1, 0))
+    ep.text = mock.MagicMock(return_value='foo')
+    ep.setSelection = mock.MagicMock()
+    ep.replaceSelectedText = mock.MagicMock()
+    ep.toggle_comments()
+    assert ep.setSelection.call_count == 2
+    # Final setSelection call re-selects the changed line.
+    assert mock.call(1, 0, 1, 4) == ep.setSelection.call_args_list[1]
+    ep.replaceSelectedText.assert_called_once_with('# foo')
+
+
+def test_EditorPane_toggle_comments_selected_normal_lines():
+    """
+    Check normal lines of code are properly commented and subsequently
+    highlighted.
+    """
+    ep = mu.interface.editor.EditorPane(None, 'foo\nbar\nbaz')
+    ep.hasSelectedText = mock.MagicMock(return_value=True)
+    ep.getSelection = mock.MagicMock(return_value=(0, 0, 2, 2))
+    ep.selectedText = mock.MagicMock(return_value='foo\nbar\nbaz')
+    ep.replaceSelectedText = mock.MagicMock()
+    ep.setSelection = mock.MagicMock()
+    ep.toggle_comments()
+    ep.replaceSelectedText.assert_called_once_with('# foo\n# bar\n# baz')
+    ep.setSelection.assert_called_once_with(0, 0, 2, 4)
+
+
+def test_EditorPane_toggle_comments_selected_hash_comment_lines():
+    """
+    Check commented lines starting with "#" are now uncommented.
+    """
+    ep = mu.interface.editor.EditorPane(None, '#foo\n#bar\n#baz')
+    ep.hasSelectedText = mock.MagicMock(return_value=True)
+    ep.getSelection = mock.MagicMock(return_value=(0, 0, 2, 3))
+    ep.selectedText = mock.MagicMock(return_value='#foo\n#bar\n#baz')
+    ep.replaceSelectedText = mock.MagicMock()
+    ep.setSelection = mock.MagicMock()
+    ep.toggle_comments()
+    ep.replaceSelectedText.assert_called_once_with('foo\nbar\nbaz')
+    ep.setSelection.assert_called_once_with(0, 0, 2, 2)
+
+
+def test_EditorPane_toggle_comments_selected_hash_space_comment_lines():
+    """
+    Check commented lines starting with "# " are now uncommented.
+    """
+    ep = mu.interface.editor.EditorPane(None, '# foo\n# bar\n# baz')
+    ep.hasSelectedText = mock.MagicMock(return_value=True)
+    ep.getSelection = mock.MagicMock(return_value=(0, 0, 2, 4))
+    ep.selectedText = mock.MagicMock(return_value='# foo\n# bar\n# baz')
+    ep.replaceSelectedText = mock.MagicMock()
+    ep.setSelection = mock.MagicMock()
+    ep.toggle_comments()
+    ep.replaceSelectedText.assert_called_once_with('foo\nbar\nbaz')
+    ep.setSelection.assert_called_once_with(0, 0, 2, 2)

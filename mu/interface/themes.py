@@ -17,14 +17,41 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 import logging
+import platform
+
 from PyQt5.QtGui import QColor, QFontDatabase
 from mu.resources import load_stylesheet, load_font_data
+
+
+logger = logging.getLogger(__name__)
+
+
+def should_patch_osx_mojave_font():
+    """
+    OSX mojave and qt5/qtscintilla has a bug where non-system installed fonts
+    are always rendered as black, regardless of the theme color.
+
+    This is inconvenient for light themes, but makes dark themes unusable.
+
+    Using a system-installed font doesn't exhibit this behaviour, so
+    update FONT_NAME to use the default terminal font in OSX on mojave.
+
+    This patch should be removed once the underlying issue has been resolved
+
+    github issue #552
+    """
+    return platform.platform().startswith("Darwin-18.")
 
 
 # The default font size.
 DEFAULT_FONT_SIZE = 14
 # All editor windows use the same font
-FONT_NAME = "Source Code Pro"
+if should_patch_osx_mojave_font():  # pragma: no cover
+    logger.warn("Overriding built-in editor font due to Issue #552")
+    FONT_NAME = "Monaco"
+else:  # pragma: no cover
+    FONT_NAME = "Source Code Pro"
+
 FONT_FILENAME_PATTERN = "SourceCodePro-{variant}.otf"
 FONT_VARIANTS = ("Bold", "BoldIt", "It", "Regular", "Semibold", "SemiboldIt")
 # Load the two themes from resources/css/[night|day].css
@@ -119,7 +146,7 @@ class DayTheme(Theme):
     FunctionMethodName = ClassName = Font(color='#0000a0')
     UnclosedString = Font(paper='#FFDDDD')
     Comment = CommentBlock = Font(color='gray')
-    Keyword = Font(color='#008080', bold=True)
+    Keyword = Font(color='#005050', bold=True)
     SingleQuotedString = DoubleQuotedString = Font(color='#800000')
     TripleSingleQuotedString = TripleDoubleQuotedString = Font(color='#060')
     Number = Font(color='#00008B')
@@ -132,6 +159,7 @@ class DayTheme(Theme):
     Margin = QColor('#EEE')
     IndicatorError = QColor('red')
     IndicatorStyle = QColor('blue')
+    DebugStyle = QColor('#ffcc33')
     IndicatorWordMatch = QColor('lightGrey')
     BraceBackground = QColor('lightGrey')
     BraceForeground = QColor('blue')
@@ -148,24 +176,25 @@ class NightTheme(Theme):
     This is the dark theme.
     """
 
-    FunctionMethodName = ClassName = Font(color='#336699', paper='#222')
+    FunctionMethodName = ClassName = Font(color='#81a2be', paper='#222')
     UnclosedString = Font(paper='#c93827')
-    Comment = CommentBlock = Font(color='#919191', paper='#222')
+    Comment = CommentBlock = Font(color='#969896', paper='#222')
     Keyword = Font(color='#73a46a', bold=True, paper='#222')
-    SingleQuotedString = DoubleQuotedString = Font(color='#fbd126',
+    SingleQuotedString = DoubleQuotedString = Font(color='#f0c674',
                                                    paper='#222')
-    TripleSingleQuotedString = TripleDoubleQuotedString = Font(color='#f14721',
+    TripleSingleQuotedString = TripleDoubleQuotedString = Font(color='#f0c674',
                                                                paper='#222')
-    Number = Font(color='#51aee6', paper='#222')
-    Decorator = Font(color='#b83920', paper='#222')
+    Number = Font(color='#b5bd68', paper='#222')
+    Decorator = Font(color='#cc6666', paper='#222')
     Default = Identifier = Font(color='#DDD', paper='#222')
-    Operator = Font(color='#c93827', paper='#222')
-    HighlightedIdentifier = Font(color='#336699', paper='#222')
+    Operator = Font(color='#b294bb', paper='#222')
+    HighlightedIdentifier = Font(color='#de935f', paper='#222')
     Paper = QColor('#222')
     Caret = QColor('#c6c6c6')
     Margin = QColor('#424446')
     IndicatorError = QColor('#c93827')
     IndicatorStyle = QColor('#2f5692')
+    DebugStyle = QColor('#444')
     IndicatorWordMatch = QColor('#f14721')
     BraceBackground = QColor('#ed1596')
     BraceForeground = QColor('#222')
@@ -199,9 +228,10 @@ class ContrastTheme(Theme):
     Margin = QColor('#333')
     IndicatorError = QColor('white')
     IndicatorStyle = QColor('cyan')
+    DebugStyle = QColor('#666')
     IndicatorWordMatch = QColor('grey')
     BraceBackground = QColor('white')
     BraceForeground = QColor('black')
     UnmatchedBraceBackground = QColor('#666')
     UnmatchedBraceForeground = QColor('black')
-    BreakpointMarker = QColor('#333')
+    BreakpointMarker = QColor('lightGrey')

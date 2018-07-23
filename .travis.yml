@@ -1,58 +1,73 @@
-# Travis can building for Linux (Ubuntu 14.04 x64) and OS X (El Capitan)
+# Travis can building for Linux and macOS
 matrix:
   include:
+    # To maximise compatibility pick earliest image, Ubuntu 14.04.5 x64
     - os: linux
       dist: trusty
       sudo: required
-      language: generic
+      language: python
+      python: 3.5
+    - os: linux
+      dist: trusty
+      sudo: required
+      language: python
+      python: 3.6
 
-    # To maximise compatibility pick earliest image, 10.9 to be removed on 20/01/2017
+    # To maximise compatibility pick earliest image, OS X 10.10 Yosemite
     - os: osx
-      osx_image: beta-xcode6.1
+      osx_image: xcode7.3
       sudo: required
       language: generic
+      python: 3.6
 
 before_install:
   # OS and default Python info
   - uname -a
   - if [ "$TRAVIS_OS_NAME" = "osx" ]; then sw_vers; fi
-  - if [ "$TRAVIS_OS_NAME" = "linux" ]; then python3 -c "import sys; print(sys.executable)"; fi
-  - if [ "$TRAVIS_OS_NAME" = "linux" ]; then sudo python3 -c "import sys; print(sys.executable)"; fi
-
-install:
-  # Python 3 and pip 3 installation are OS dependent
+  # Python 3 installation required
   - if [ "$TRAVIS_OS_NAME" = "osx" ]; then bash package/install_osx.sh; fi
-  - if [ "$TRAVIS_OS_NAME" = "linux" ]; then bash package/install_linux.sh; fi
-
-  # Install Mu dependencies (PyQt & QScintilla will be absorbed in requirements.txt once ready)
-  - sudo pip3 install -r requirements.txt
-  - sudo pip3 install PyQt5
-  - sudo pip3 install QScintilla
-
-  # Install packaging dependencies, macOS depends on update not yet released https://github.com/pyinstaller/pyinstaller/pull/1965
-  - sudo pip3 install git+git://github.com/pyinstaller/pyinstaller.git@483c819d6a256b58db6740696a901bd41c313f0c
-
+  - if [ "$TRAVIS_OS_NAME" = "osx" ]; then pyenv install 3.6.5; fi
+  - if [ "$TRAVIS_OS_NAME" = "osx" ]; then pyenv versions; fi
+  - if [ "$TRAVIS_OS_NAME" = "osx" ]; then pyenv global 3.6.5; fi
+  - if [ "$TRAVIS_OS_NAME" = "osx" ]; then eval "$(pyenv init -)"; fi
+  - pip install --upgrade pip
   # Check everything was correctly installed
   - echo $PATH
-  - python3 --version
-  - python3 -c "import struct; print(struct.calcsize('P') * 8)"
-  - python3 -c "import sys; print(sys.executable)"
-  - pip3 --version
-  - sudo pip3 --version
-  - pip3 freeze
-  - python3 -c "import PyQt5"
-  - python3 -c "import PyQt5.Qsci"
+  - python --version
+  - python -c "import struct; print(struct.calcsize('P') * 8)"
+  - python -c "import sys; print(sys.executable)"
+  - python -m pip --version
+  - pip --version
+  - if [ "$TRAVIS_OS_NAME" = "linux" ]; then virtualenv venv --python=python3; fi
+  - if [ "$TRAVIS_OS_NAME" = "linux" ]; then source venv/bin/activate; fi
+
+install:
+  # Install Mu dependencies
+  - pip install -r requirements.txt
+  # Install packager for OSX
+  - pip install briefcase
+  # Install disk image maker for OSX
+  - pip install dmgbuild 
+  # Install helpful pytest plug-in
+  - pip install pytest-faulthandler
+  # Check everything was correctly installed
+  - pip freeze
 
 script:
-  # Run the tests, at the moment there is a segmentation fault on Linux, this will go away with Py3.5
+  # Run the tests
   - if [ "$TRAVIS_OS_NAME" = "osx" ]; then make check; fi
-  - if [ "$TRAVIS_OS_NAME" = "osx" ]; then make clean; fi
+  # PyQt crashes without a frame buffer, so Linux needs "X Virtual Framebuffer"
+  - if [ "$TRAVIS_OS_NAME" = "linux" ]; then xvfb-run make check; fi
+  - make clean
 
-  # Package it
-  - pyinstaller package/pyinstaller.spec
-  - du -sk dist/
-  - if [ "$TRAVIS_OS_NAME" = "linux" ]; then mv dist/mu dist/mu_$(date '+%Y-%m-%d_%H_%M')_${TRAVIS_BRANCH}_${TRAVIS_COMMIT:0:7}.bin; fi
-  - if [ "$TRAVIS_OS_NAME" = "osx" ]; then cd dist && zip --symlinks -r mu_$(date '+%Y-%m-%d_%H_%M')_${TRAVIS_BRANCH}_${TRAVIS_COMMIT:0:7}.zip mu.app && rm -r mu.app && rm mu && cd ..; fi
+  # Package it for OSX
+  #- if [ "$TRAVIS_OS_NAME" = "osx" ]; then echo "[install]" >> setup.cfg; echo "prefix=" >> setup.cfg; fi
+  #- if [ "$TRAVIS_OS_NAME" = "osx" ]; then sudo mkdir -p /lib/python3.6/site-packages/; fi
+  - if [ "$TRAVIS_OS_NAME" = "osx" ]; then python setup.py macos --support-pkg=https://github.com/mu-editor/mu_portable_python_macos/releases/download/0.0.5/python3-reduced.tar.gz; fi
+  - if [ "$TRAVIS_OS_NAME" = "osx" ]; then mkdir dist; fi
+  - if [ "$TRAVIS_OS_NAME" = "osx" ]; then zip -r -X dist/mu-editor.zip macOS/mu-editor.app; fi
+  - if [ "$TRAVIS_OS_NAME" = "osx" ]; then du -sk dist/; fi
+  - if [ "$TRAVIS_OS_NAME" = "osx" ]; then mv dist/mu-editor.zip dist/mu-editor_$(date '+%Y-%m-%d_%H_%M')_${TRAVIS_BRANCH}_${TRAVIS_COMMIT:0:7}.zip; fi
 
 # Deploy the build version in an S3 bucket
 deploy:
@@ -68,7 +83,8 @@ deploy:
   acl: public_read
   on:
     repo: mu-editor/mu
-    branch: [master, travis_bucket_move]
+    branch: [master]
+    condition: $TRAVIS_OS_NAME = "osx"
 
 notifications:
   email:

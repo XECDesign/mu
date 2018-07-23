@@ -6,7 +6,8 @@ import sys
 import os.path
 from unittest import mock
 from mu.app import excepthook, run, setup_logging, debug, setup_modes
-from mu.logic import LOG_FILE, LOG_DIR, DEBUGGER_PORT
+from mu.logic import LOG_FILE, LOG_DIR, DEBUGGER_PORT, ENCODING
+from mu.interface.themes import NIGHT_STYLE, DAY_STYLE, CONTRAST_STYLE
 
 
 def test_setup_logging():
@@ -20,7 +21,8 @@ def test_setup_logging():
         setup_logging()
         mkdir.assert_called_once_with(LOG_DIR)
         log_conf.assert_called_once_with(LOG_FILE, when='midnight',
-                                         backupCount=5, delay=0)
+                                         backupCount=5, delay=0,
+                                         encoding=ENCODING)
         logging.getLogger.assert_called_once_with()
         assert sys.excepthook == excepthook
 
@@ -60,20 +62,39 @@ def test_run():
     Testing the call_count and mock_calls allows us to measure the expected
     number of instantiations and method calls.
     """
+    class DumSig:
+        def __init__(self):
+            @self.connect
+            def default(*args):
+                raise Exception('No signal handler connected')
+
+        def connect(self, func):
+            self.func = func
+            return func
+
+        def emit(self, *args):
+            self.func(*args)
+
+    class Win(mock.MagicMock):
+        load_theme = DumSig()
+
+    window = Win()
+
     with mock.patch('mu.app.setup_logging') as set_log, \
             mock.patch('mu.app.QApplication') as qa, \
             mock.patch('mu.app.QSplashScreen') as qsp, \
             mock.patch('mu.app.Editor') as ed, \
             mock.patch('mu.app.load_pixmap'), \
-            mock.patch('mu.app.Window') as win, \
+            mock.patch('mu.app.Window', window) as win, \
             mock.patch('mu.app.QTimer') as timer, \
+            mock.patch('sys.argv', ['mu']), \
             mock.patch('sys.exit') as ex:
         run()
         assert set_log.call_count == 1
         # foo.call_count is instantiating the class
         assert qa.call_count == 1
         # foo.mock_calls are method calls on the object
-        assert len(qa.mock_calls) == 2
+        assert len(qa.mock_calls) == 8
         assert qsp.call_count == 1
         assert len(qsp.mock_calls) == 2
         assert timer.call_count == 1
@@ -81,8 +102,14 @@ def test_run():
         assert ed.call_count == 1
         assert len(ed.mock_calls) == 3
         assert win.call_count == 1
-        assert len(win.mock_calls) == 5
+        assert len(win.mock_calls) == 11
         assert ex.call_count == 1
+        window.load_theme.emit('day')
+        qa.assert_has_calls([mock.call().setStyleSheet(DAY_STYLE)])
+        window.load_theme.emit('night')
+        qa.assert_has_calls([mock.call().setStyleSheet(NIGHT_STYLE)])
+        window.load_theme.emit('contrast')
+        qa.assert_has_calls([mock.call().setStyleSheet(CONTRAST_STYLE)])
 
 
 def test_excepthook():
@@ -94,7 +121,7 @@ def test_excepthook():
 
     with mock.patch('mu.app.logging.error') as error, \
             mock.patch('mu.app.sys.exit') as exit:
-        sys.excepthook(*exc_args)
+        excepthook(*exc_args)
         error.assert_called_once_with('Unrecoverable error', exc_info=exc_args)
         exit.assert_called_once_with(1)
 
@@ -114,3 +141,18 @@ def test_debug():
     mock_runner.assert_called_once_with('localhost', DEBUGGER_PORT,
                                         expected_filename,
                                         ['foo', 'bar', 'baz', ])
+
+
+def test_debug_no_args():
+    """
+    If the debugger is accidentally started with no filename and/or associated
+    args, then emit a friendly message to indicate the problem.
+    """
+    mock_sys = mock.MagicMock()
+    mock_sys.argv = [None, ]
+    mock_print = mock.MagicMock()
+    with mock.patch('mu.app.sys', mock_sys), \
+            mock.patch('builtins.print', mock_print):
+        debug()
+    msg = "Debugger requires a Python script filename to run."
+    mock_print.assert_called_once_with(msg)

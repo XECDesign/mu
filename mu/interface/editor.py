@@ -23,7 +23,9 @@ import logging
 import os.path
 from collections import defaultdict
 from PyQt5.Qsci import QsciScintilla, QsciLexerPython, QsciAPIs
+from PyQt5.QtCore import Qt, pyqtSignal
 from mu.interface.themes import Font, DayTheme
+from mu.logic import NEWLINE
 
 
 # Regular Expression for valid individual code 'words'
@@ -61,18 +63,24 @@ class EditorPane(QsciScintilla):
     Represents the text editor.
     """
 
-    def __init__(self, path, text):
+    # Signal fired when a script or hex is droped on this editor
+    open_file = pyqtSignal(str)
+
+    def __init__(self, path, text, newline=NEWLINE):
         super().__init__()
+        self.setUtf8(True)
         self.path = path
         self.setText(text)
+        self.newline = newline
         self.check_indicators = {  # IDs are arbitrary
             'error': {'id': 19, 'markers': {}},
             'style': {'id': 20, 'markers': {}}
         }
-        self.BREAKPOINT_MARKER = 23  # Arbitrary
         self.search_indicators = {
             'selection': {'id': 21, 'positions': []}
         }
+        self.DEBUG_INDICATOR = 22  # Arbitrary
+        self.BREAKPOINT_MARKER = 23  # Arbitrary
         self.previous_selection = {
             'line_start': 0, 'col_start': 0, 'line_end': 0, 'col_end': 0
         }
@@ -80,8 +88,44 @@ class EditorPane(QsciScintilla):
         self.api = None
         self.has_annotations = False
         self.setModified(False)
-        self.breakpoint_lines = set()
+        self.breakpoint_handles = set()
         self.configure()
+
+    def dropEvent(self, event):
+        """
+        Run by Qt when *something* is dropped on this editor
+        """
+
+        # Does the drag event have any urls?
+        # Files are transfered as a url (by path not value)
+        if event.mimeData().hasUrls():
+            # Qt doesn't seem to have an 'open' action,
+            # this seems the most appropriate
+            event.setDropAction(Qt.CopyAction)
+            # Valid links
+            links = []
+            # Iterate over each of the urls attached to the event
+            for url in event.mimeData().urls():
+                # Check the url is to a local file
+                # (not a webpage for example)
+                if url.isLocalFile():
+                    # Grab a 'real' path from the url
+                    path = url.toLocalFile()
+                    # Add it to the list of valid links
+                    links.append(path)
+
+            # Did we get any?
+            if len(links) > 0:
+                # Only accept now we actually know we can do
+                # something with the drop event
+                event.accept()
+                for link in links:
+                    # Start bubbling an open file request
+                    self.open_file.emit(link)
+
+        # If the event wasn't handled let QsciScintilla have a go
+        if not event.isAccepted():
+            super().dropEvent(event)
 
     def configure(self):
         """
@@ -115,6 +159,7 @@ class EditorPane(QsciScintilla):
         for type_ in self.search_indicators:
             self.indicatorDefine(
                 self.StraightBoxIndicator, self.search_indicators[type_]['id'])
+        self.indicatorDefine(self.FullBoxIndicator, self.DEBUG_INDICATOR)
         self.setAnnotationDisplay(self.AnnotationBoxed)
         self.selectionChanged.connect(self.selection_change_listener)
 
@@ -132,12 +177,12 @@ class EditorPane(QsciScintilla):
         theme.apply_to(self.lexer)
         self.lexer.setDefaultPaper(theme.Paper)
         self.setCaretForegroundColor(theme.Caret)
-        self.setMarginsBackgroundColor(theme.Margin)
-        self.setMarginsForegroundColor(theme.Caret)
         self.setIndicatorForegroundColor(theme.IndicatorError,
                                          self.check_indicators['error']['id'])
         self.setIndicatorForegroundColor(theme.IndicatorStyle,
                                          self.check_indicators['style']['id'])
+        self.setIndicatorForegroundColor(theme.DebugStyle,
+                                         self.DEBUG_INDICATOR)
         for type_ in self.search_indicators:
             self.setIndicatorForegroundColor(
                 theme.IndicatorWordMatch, self.search_indicators[type_]['id'])
@@ -146,6 +191,8 @@ class EditorPane(QsciScintilla):
         self.setAutoCompletionThreshold(2)
         self.setAutoCompletionSource(QsciScintilla.AcsAll)
         self.setLexer(self.lexer)
+        self.setMarginsBackgroundColor(theme.Margin)
+        self.setMarginsForegroundColor(theme.Caret)
         self.setMatchedBraceBackgroundColor(theme.BraceBackground)
         self.setMatchedBraceForegroundColor(theme.BraceForeground)
         self.setUnmatchedBraceBackgroundColor(theme.UnmatchedBraceBackground)
@@ -172,7 +219,7 @@ class EditorPane(QsciScintilla):
         if self.path:
             label = os.path.basename(self.path)
         else:
-            label = 'untitled'
+            label = _('untitled')
         # Add an asterisk to indicate that the file remains unsaved.
         if self.isModified():
             return label + ' *'
@@ -228,6 +275,34 @@ class EditorPane(QsciScintilla):
                     col_end = col + 1
                     self.fillIndicatorRange(line_no, col_start, line_no,
                                             col_end, indicator['id'])
+        if feedback:
+            # Ensure the first line with a problem is visible.
+            first_problem_line = sorted(feedback.keys())[0]
+            self.ensureLineVisible(first_problem_line)
+
+    def debugger_at_line(self, line):
+        """
+        Set the line to be highlighted with the DEBUG_INDICATOR.
+        """
+        self.reset_debugger_highlight()
+        # Calculate the line length & account for \r\n giving ObOE.
+        line_length = len(self.text(line).rstrip())
+        self.fillIndicatorRange(line, 0, line, line_length,
+                                self.DEBUG_INDICATOR)
+        self.ensureLineVisible(line)
+
+    def reset_debugger_highlight(self):
+        """
+        Reset all the lines so the DEBUG_INDICATOR is no longer displayed.
+
+        We need to check each line since there's no way to tell what the
+        currently highlighted line is. This approach also has the advantage of
+        resetting the *whole* editor pane.
+        """
+        for i in range(self.lines()):
+            line_length = len(self.text(i))
+            self.clearIndicatorRange(i, 0, i, line_length,
+                                     self.DEBUG_INDICATOR)
 
     def show_annotations(self):
         """
@@ -238,8 +313,8 @@ class EditorPane(QsciScintilla):
             markers = self.check_indicators[indicator]['markers']
             for k, marker_list in markers.items():
                 for m in marker_list:
-                    lines[m['line_no']].append('\u2BB4' +
-                                               m['message'].capitalize())
+                    lines[m['line_no']].append('\u2191 ' +
+                                               m['message'])
         for line, messages in lines.items():
             text = '\n'.join(messages).strip()
             if text:
@@ -375,3 +450,59 @@ class EditorPane(QsciScintilla):
             # Highlight matches
             self.reset_search_indicators()
             self.highlight_selected_matches()
+
+    def toggle_line(self, raw_line):
+        """
+        Given a raw_line, will return the toggled version of it.
+        """
+        clean_line = raw_line.strip()
+        if clean_line.startswith('#'):
+            # It's a comment line, so handle "# " & "#..." as fallback:
+            if clean_line.startswith('# '):
+                return raw_line.replace('# ', '')
+            else:
+                return raw_line.replace('#', '')
+        elif clean_line:
+            # It's a normal line of code.
+            return '# ' + raw_line
+        else:
+            # It's a whitespace line, so just return it.
+            return raw_line
+
+    def toggle_comments(self):
+        """
+        Iterate through the selected lines and toggle their comment/uncomment
+        state. So, lines that are not comments become comments and vice versa.
+        """
+        if self.hasSelectedText():
+            # Toggle currently selected text.
+            logger.info("Toggling comments")
+            line_from, index_from, line_to, index_to = self.getSelection()
+            selected_text = self.selectedText()
+            lines = selected_text.split('\n')
+            toggled_lines = []
+            for line in lines:
+                toggled_lines.append(self.toggle_line(line))
+            new_text = '\n'.join(toggled_lines)
+            self.replaceSelectedText(new_text)
+            # Ensure the new text is also selected.
+            last_newline = toggled_lines[-1]
+            last_oldline = lines[-1].strip()
+            if last_newline.startswith('#'):
+                index_to += 2  # A newly commented line starts... "# "
+            elif last_oldline.startswith('#'):
+                # Check the original line to see what has been uncommented.
+                if last_oldline.startswith('# '):
+                    index_to -= 2  # It was "# ".
+                else:
+                    index_to -= 1  # It was "#".
+            self.setSelection(line_from, index_from, line_to, index_to)
+        else:
+            # Toggle the line currently containing the cursor.
+            line_number, column = self.getCursorPosition()
+            logger.info('Toggling line {}'.format(line_number))
+            line_content = self.text(line_number)
+            new_line = self.toggle_line(line_content)
+            self.setSelection(line_number, 0, line_number, len(line_content))
+            self.replaceSelectedText(new_line)
+            self.setSelection(line_number, 0, line_number, len(new_line) - 1)

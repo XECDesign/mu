@@ -32,14 +32,25 @@ Feedback may be given for contributions and, where necessary, changes will
 be politely requested and discussed with the originating author. Respectful
 yet robust argument is most welcome.
 
-Finally, contributions are subject to the following caveat: the contribution
-was created by the contributor who, by submitting the contribution, is
-confirming that they have the authority to submit the contribution and place it
-under the license as defined in the LICENSE file found within this repository.
+.. warning::
+
+    **Contributions are subject to the following caveats**: the contribution
+    was created by the contributor who, by submitting the contribution, is
+    confirming that they have the authority to submit the contribution and
+    place it under the license as defined in the LICENSE file found within
+    this repository (see :doc:`license`). If this is a significant contribution
+    the contributor should add themselves to the AUTHORS file found in the
+    root of Mu's repository, otherwise they agree, for the sake of convenience,
+    that copyright passes exclusively to Nicholas H.Tollervey on behalf of the
+    Mu project.
 
 Checklist
 +++++++++
 
+* If your contribution includes non-obvious technical decision making please
+  make sure you document this in the
+  `design decisions <https://mu.readthedocs.io/en/latest/design.html>`_
+  section.
 * Your code should be commented in *plain English* (British spelling).
 * If your contribution is for a major block of work and you've not done so
   already, add yourself to the AUTHORS file following the convention found
@@ -50,4 +61,4 @@ Checklist
     make check
 
 * If in doubt, ask a question. The only stupid question is the one that's never asked.
-* Most importantly, **Have fun!**
+* Most importantly, **Have fun!** :-)

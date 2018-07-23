@@ -30,11 +30,11 @@ class AdafruitMode(MicroPythonMode):
     """
 
     name = _('Adafruit CircuitPython')
-    description = _("Use CircuitPython on Adafruit's line of development "
-                    "boards.")
+    description = _("Use CircuitPython on Adafruit's line of boards.")
     icon = 'adafruit'
     save_timeout = 0  #: Don't autosave on Adafruit boards. Casues a restart.
     connected = True  #: is the Adafruit board connected.
+    force_interrupt = False  #: NO keyboard interrupt on serial connection.
     valid_boards = [
         (0x239A, 0x8015),  # Adafruit Feather M0 CircuitPython
         (0x239A, 0x8023),  # Adafruit Feather M0 Express CircuitPython
@@ -48,7 +48,16 @@ class AdafruitMode(MicroPythonMode):
         (0x239A, 0x8025),  # Adafruit Feather RadioFruit
         (0x239A, 0x8026),  # Adafruit Feather M4
         (0x239A, 0x8028),  # Adafruit pIRKey M0
+        (0x239A, 0x802A),  # Adafruit Feather 52840
+        (0x239A, 0x802C),  # Adafruit Itsy M4
+        (0x239A, 0x802E),  # Adafruit CRICKit M0
     ]
+    # Modules built into CircuitPython which mustn't be used as file names
+    # for source code.
+    module_names = {'storage', 'os', 'touchio', 'microcontroller', 'bitbangio',
+                    'digitalio', 'audiobusio', 'multiterminal', 'nvm',
+                    'pulseio', 'usb_hid', 'analogio', 'time', 'busio',
+                    'random', 'audioio', 'sys', 'math', 'builtins'}
 
     def actions(self):
         """
@@ -57,17 +66,17 @@ class AdafruitMode(MicroPythonMode):
         """
         buttons = [
             {
-                'name': 'repl',
-                'display_name': _('REPL'),
-                'description': _('Use the REPL for live coding.'),
+                'name': 'serial',
+                'display_name': _('Serial'),
+                'description': _('Open a serial connection to your device.'),
                 'handler': self.toggle_repl,
-                'shortcut': 'CTRL+Shift+I',
+                'shortcut': 'CTRL+Shift+U',
             }, ]
         if CHARTS:
             buttons.append({
                 'name': 'plotter',
                 'display_name': _('Plotter'),
-                'description': _('Plot incoming REPL data'),
+                'description': _('Plot incoming REPL data.'),
                 'handler': self.toggle_plotter,
                 'shortcut': 'CTRL+Shift+P',
             })
@@ -83,11 +92,15 @@ class AdafruitMode(MicroPythonMode):
         # plugged in CIRCUITPY board.
         if os.name == 'posix':
             # We're on Linux or OSX
-            mount_output = check_output('mount').splitlines()
-            mounted_volumes = [x.split()[2] for x in mount_output]
-            for volume in mounted_volumes:
-                if volume.endswith(b'CIRCUITPY'):
-                    device_dir = volume.decode('utf-8')
+            for mount_command in ['mount', '/sbin/mount']:
+                try:
+                    mount_output = check_output(mount_command).splitlines()
+                    mounted_volumes = [x.split()[2] for x in mount_output]
+                    for volume in mounted_volumes:
+                        if volume.endswith(b'CIRCUITPY'):
+                            device_dir = volume.decode('utf-8')
+                except FileNotFoundError:
+                    next
         elif os.name == 'nt':
             # We're on Windows.
 
