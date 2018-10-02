@@ -1,2 +1,2 @@
 fix-dependencies.patch
-fix-desktop-file.patch
+remove-python3.6-check.patch

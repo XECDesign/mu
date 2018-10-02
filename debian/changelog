@@ -1,3 +1,9 @@
+mu-editor (1.0.1-1~rpt1) stretch; urgency=medium
+
+  * Upstream release 1.0.1
+
+ -- Serge Schneider <serge@raspberrypi.org>  Tue, 02 Oct 2018 10:48:48 +0100
+
 mu-editor (1.0.0-1~rpt1) stretch; urgency=medium
 
   * Upstream release 1.0.0
